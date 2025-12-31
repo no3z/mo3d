@@ -1,12 +1,6 @@
 #include "Mesh.h"
+#include "GLHeaders.h"
 #include "../utils/Logger.h"
-
-#ifdef __APPLE__
-    #include <OpenGL/gl3.h>
-#else
-    #include <GL/gl.h>
-#endif
-
 #include <glm/gtc/constants.hpp>
 
 namespace mo3d {

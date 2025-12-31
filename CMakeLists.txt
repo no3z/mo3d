@@ -16,6 +16,7 @@ find_package(imgui CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(Freetype REQUIRED)
 find_package(RtMidi CONFIG REQUIRED)
+find_package(OpenGL REQUIRED)
 
 if(MO3D_USE_VULKAN)
     find_package(Vulkan REQUIRED)
@@ -69,6 +70,7 @@ set(MO3D_HEADERS
     src/render/Texture.h
     src/render/Material.h
     src/render/FontRenderer.h
+    src/render/GLHeaders.h
     src/ui/UIManager.h
     src/ui/MappingEditor.h
     src/ui/FileDialog.h
@@ -93,6 +95,7 @@ target_link_libraries(mo3d PRIVATE
     nlohmann_json::nlohmann_json
     ${FREETYPE_LIBRARIES}
     RtMidi::rtmidi
+    OpenGL::GL
 )
 
 if(MO3D_USE_VULKAN)
@@ -100,8 +103,25 @@ if(MO3D_USE_VULKAN)
 endif()
 
 # Platform-specific settings
-if(UNIX AND NOT APPLE)
+if(APPLE)
+    # macOS specific settings
+    target_compile_definitions(mo3d PRIVATE GL_SILENCE_DEPRECATION)
+    find_library(COCOA_LIBRARY Cocoa REQUIRED)
+    find_library(IOKIT_LIBRARY IOKit REQUIRED)
+    find_library(COREVIDEO_LIBRARY CoreVideo REQUIRED)
+    target_link_libraries(mo3d PRIVATE
+        ${COCOA_LIBRARY}
+        ${IOKIT_LIBRARY}
+        ${COREVIDEO_LIBRARY}
+    )
+elseif(UNIX)
+    # Linux specific settings
     target_link_libraries(mo3d PRIVATE pthread dl)
+    # X11 is often needed for GLFW on Linux
+    find_package(X11)
+    if(X11_FOUND)
+        target_link_libraries(mo3d PRIVATE ${X11_LIBRARIES})
+    endif()
 endif()
 
 # Install

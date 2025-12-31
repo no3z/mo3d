@@ -1,11 +1,6 @@
 #include "Texture.h"
+#include "GLHeaders.h"
 #include "../utils/Logger.h"
-
-#ifdef __APPLE__
-    #include <OpenGL/gl3.h>
-#else
-    #include <GL/gl.h>
-#endif
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
