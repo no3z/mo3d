@@ -7,6 +7,11 @@ Window::Window()
     : window(nullptr)
     , width(0)
     , height(0)
+    , isFullscreen(false)
+    , windowedX(100)
+    , windowedY(100)
+    , windowedWidth(1920)
+    , windowedHeight(1080)
 {
 }
 
@@ -18,6 +23,10 @@ bool Window::Initialize(const WindowConfig& config) {
     width = config.width;
     height = config.height;
     title = config.title;
+    isFullscreen = config.fullscreen;
+
+    windowedWidth = width;
+    windowedHeight = height;
 
     if (!glfwInit()) {
         LOG_ERROR("Failed to initialize GLFW");
@@ -91,15 +100,37 @@ void Window::SetVSync(bool enabled) {
 }
 
 void Window::SetFullscreen(bool enabled) {
-    if (!window) return;
+    if (!window || isFullscreen == enabled) return;
 
     if (enabled) {
+        // Save current windowed position and size
+        glfwGetWindowPos(window, &windowedX, &windowedY);
+        glfwGetWindowSize(window, &windowedWidth, &windowedHeight);
+
+        // Switch to fullscreen
         GLFWmonitor* monitor = glfwGetPrimaryMonitor();
         const GLFWvidmode* mode = glfwGetVideoMode(monitor);
         glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
+
+        width = mode->width;
+        height = mode->height;
+        isFullscreen = true;
+
+        LOG_INFO("Switched to fullscreen: ", width, "x", height);
     } else {
-        glfwSetWindowMonitor(window, nullptr, 100, 100, width, height, 0);
+        // Restore windowed mode
+        glfwSetWindowMonitor(window, nullptr, windowedX, windowedY, windowedWidth, windowedHeight, 0);
+
+        width = windowedWidth;
+        height = windowedHeight;
+        isFullscreen = false;
+
+        LOG_INFO("Switched to windowed: ", width, "x", height);
     }
+}
+
+void Window::ToggleFullscreen() {
+    SetFullscreen(!isFullscreen);
 }
 
 void Window::FramebufferSizeCallback(GLFWwindow* window, int width, int height) {

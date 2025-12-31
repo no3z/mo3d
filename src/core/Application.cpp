@@ -1,6 +1,9 @@
 #include "Application.h"
 #include "Time.h"
+#include "Settings.h"
+#include "ProjectManager.h"
 #include "../utils/Logger.h"
+#include "../utils/FileIO.h"
 #include "../render/Mesh.h"
 #include <GLFW/glfw3.h>
 #include <glm/gtc/constants.hpp>
@@ -9,6 +12,8 @@ namespace mo3d {
 
 Application::Application()
     : running(false)
+    , showProjectPanel(false)
+    , showSettingsPanel(false)
 {
 }
 
@@ -22,12 +27,19 @@ bool Application::Initialize() {
 
     Time::Init();
 
+    // Load settings
+    Settings::Instance().LoadFromFile();
+    auto& settings = Settings::Instance();
+
+    // Create window with settings
     window = std::make_unique<Window>();
     WindowConfig config;
-    config.width = 1920;
-    config.height = 1080;
+    config.width = settings.window.width;
+    config.height = settings.window.height;
     config.title = "Mo3D - MIDI 3D Visualization";
-    config.vsync = true;
+    config.vsync = settings.window.vsync;
+    config.fullscreen = settings.window.fullscreen;
+    config.samples = settings.window.msaaSamples;
 
     if (!window->Initialize(config)) {
         LOG_ERROR("Failed to initialize window");
@@ -35,8 +47,21 @@ bool Application::Initialize() {
     }
 
     window->SetResizeCallback([this](int width, int height) {
+        auto& settings = Settings::Instance();
+        settings.window.width = width;
+        settings.window.height = height;
+
         if (scene && scene->GetMainCamera()) {
             scene->GetMainCamera()->SetAspectRatio((float)width / (float)height);
+        }
+    });
+
+    // Setup key callback for shortcuts
+    window->SetKeyCallback([this](int key, int scancode, int action, int mods) {
+        // F11 - Toggle fullscreen
+        if (key == GLFW_KEY_F11 && action == GLFW_PRESS) {
+            window->ToggleFullscreen();
+            Settings::Instance().window.fullscreen = window->IsFullscreen();
         }
     });
 
@@ -45,6 +70,13 @@ bool Application::Initialize() {
         LOG_ERROR("Failed to initialize renderer");
         return false;
     }
+
+    renderer->SetClearColor(glm::vec3(
+        settings.render.clearColorR,
+        settings.render.clearColorG,
+        settings.render.clearColorB
+    ));
+    renderer->SetWireframe(settings.render.wireframe);
 
     midiInput = std::make_unique<MidiInput>();
     if (!midiInput->Initialize()) {
@@ -56,15 +88,8 @@ bool Application::Initialize() {
         OnMidiEvent(event);
     });
 
-    auto ports = midiInput->GetAvailablePorts();
-    if (!ports.empty()) {
-        LOG_INFO("Available MIDI ports:");
-        for (size_t i = 0; i < ports.size(); i++) {
-            LOG_INFO("  [", i, "] ", ports[i]);
-        }
-    } else {
-        LOG_WARN("No MIDI ports found");
-    }
+    // Auto-connect MIDI if configured
+    AutoConnectMidi();
 
     midiMapping = std::make_unique<MidiMapping>();
 
@@ -79,11 +104,15 @@ bool Application::Initialize() {
         return false;
     }
 
+    projectManager = std::make_unique<ProjectManager>();
+    projectManager->NewProject("Default Project");
+
     SetupScene();
     SetupMidiMappings();
 
     running = true;
     LOG_INFO("Application initialized successfully");
+    LOG_INFO("Press F11 for fullscreen, ESC to exit");
     return true;
 }
 
@@ -93,6 +122,7 @@ void Application::Run() {
         float deltaTime = Time::DeltaTime();
 
         HandleInput();
+        HandleKeyboardShortcuts();
         Update(deltaTime);
         Render();
 
@@ -104,7 +134,11 @@ void Application::Run() {
 void Application::Shutdown() {
     LOG_INFO("Shutting down application...");
 
+    // Save settings on exit
+    Settings::Instance().SaveToFile();
+
     uiManager.reset();
+    projectManager.reset();
     scene.reset();
     midiMapping.reset();
     midiInput.reset();
@@ -127,12 +161,23 @@ void Application::Render() {
         renderer->RenderScene(scene.get(), scene->GetMainCamera().get());
     }
 
+    auto& settings = Settings::Instance();
+
     uiManager->BeginFrame();
-    uiManager->RenderMainMenu();
-    uiManager->RenderMidiPanel(midiInput.get());
-    uiManager->RenderMappingEditor(midiMapping.get());
-    uiManager->RenderScenePanel(scene.get());
-    uiManager->RenderPerformancePanel();
+    uiManager->RenderMainMenu(&showProjectPanel, &showSettingsPanel);
+    uiManager->RenderMidiPanel(midiInput.get(), &settings.ui.showMidiPanel);
+    uiManager->RenderMappingEditor(midiMapping.get(), &settings.ui.showMappingPanel);
+    uiManager->RenderScenePanel(scene.get(), &settings.ui.showScenePanel);
+    uiManager->RenderPerformancePanel(&settings.ui.showPerformancePanel);
+
+    if (showProjectPanel) {
+        uiManager->RenderProjectPanel(projectManager.get(), scene.get(), midiMapping.get(), &showProjectPanel);
+    }
+
+    if (showSettingsPanel) {
+        uiManager->RenderSettingsPanel(window.get(), renderer.get(), &showSettingsPanel);
+    }
+
     uiManager->EndFrame();
 
     renderer->EndFrame();
@@ -141,6 +186,55 @@ void Application::Render() {
 void Application::HandleInput() {
     if (glfwGetKey(window->GetNativeWindow(), GLFW_KEY_ESCAPE) == GLFW_PRESS) {
         running = false;
+    }
+}
+
+void Application::HandleKeyboardShortcuts() {
+    GLFWwindow* nativeWindow = window->GetNativeWindow();
+
+    // Check for Ctrl key
+    bool ctrlPressed = glfwGetKey(nativeWindow, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ||
+                      glfwGetKey(nativeWindow, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS;
+
+    bool shiftPressed = glfwGetKey(nativeWindow, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS ||
+                       glfwGetKey(nativeWindow, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS;
+
+    static bool nWasPressed = false;
+    static bool oWasPressed = false;
+    static bool sWasPressed = false;
+
+    // Ctrl+N - New Project
+    if (ctrlPressed && glfwGetKey(nativeWindow, GLFW_KEY_N) == GLFW_PRESS) {
+        if (!nWasPressed) {
+            projectManager->NewProject("New Project");
+            scene->Clear();
+            midiMapping->ClearMappings();
+            SetupScene();
+            SetupMidiMappings();
+            nWasPressed = true;
+        }
+    } else {
+        nWasPressed = false;
+    }
+
+    // Ctrl+O - Open Project
+    if (ctrlPressed && glfwGetKey(nativeWindow, GLFW_KEY_O) == GLFW_PRESS) {
+        if (!oWasPressed) {
+            showProjectPanel = true;
+            oWasPressed = true;
+        }
+    } else {
+        oWasPressed = false;
+    }
+
+    // Ctrl+S - Save Project
+    if (ctrlPressed && glfwGetKey(nativeWindow, GLFW_KEY_S) == GLFW_PRESS) {
+        if (!sWasPressed) {
+            SaveProject();
+            sWasPressed = true;
+        }
+    } else {
+        sWasPressed = false;
     }
 }
 
@@ -222,6 +316,77 @@ void Application::SetupMidiMappings() {
 void Application::OnMidiEvent(const MidiEvent& event) {
     LOG_DEBUG(event.ToString());
     midiMapping->ProcessMidiEvent(event);
+}
+
+void Application::SaveProject() {
+    std::string path = projectManager->GetCurrentProjectPath();
+    if (path.empty()) {
+        path = "project.mo3d";
+    }
+
+    auto json = projectManager->SerializeProject(scene.get(), midiMapping.get());
+    std::string content = json.dump(2);
+
+    if (FileIO::WriteTextFile(path, content)) {
+        projectManager->SaveProject(path);
+        LOG_INFO("Project saved successfully");
+    } else {
+        LOG_ERROR("Failed to save project");
+    }
+}
+
+void Application::LoadProject(const std::string& path) {
+    std::string content = FileIO::ReadTextFile(path);
+    if (content.empty()) {
+        LOG_ERROR("Failed to load project: ", path);
+        return;
+    }
+
+    try {
+        nlohmann::json json = nlohmann::json::parse(content);
+
+        if (projectManager->LoadProject(path)) {
+            projectManager->DeserializeProject(json, scene.get(), midiMapping.get());
+
+            // Re-setup MIDI mappings (callbacks need to be re-registered)
+            SetupMidiMappings();
+
+            LOG_INFO("Project loaded successfully");
+        }
+    } catch (const std::exception& e) {
+        LOG_ERROR("Failed to parse project: ", e.what());
+    }
+}
+
+void Application::AutoConnectMidi() {
+    auto& settings = Settings::Instance();
+
+    if (!settings.midi.autoConnect) {
+        return;
+    }
+
+    auto ports = midiInput->GetAvailablePorts();
+    if (ports.empty()) {
+        LOG_WARN("No MIDI ports available for auto-connect");
+        return;
+    }
+
+    // Try to connect to last used port
+    if (settings.midi.lastInputPortIndex >= 0 &&
+        settings.midi.lastInputPortIndex < static_cast<int>(ports.size())) {
+
+        if (midiInput->OpenPort(settings.midi.lastInputPortIndex)) {
+            LOG_INFO("Auto-connected to MIDI port: ", settings.midi.lastInputPort);
+            return;
+        }
+    }
+
+    // Fallback: connect to first available port
+    if (midiInput->OpenPort(0)) {
+        LOG_INFO("Auto-connected to first MIDI port: ", ports[0]);
+        settings.midi.lastInputPort = ports[0];
+        settings.midi.lastInputPortIndex = 0;
+    }
 }
 
 } // namespace mo3d

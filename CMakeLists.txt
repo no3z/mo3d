@@ -28,6 +28,8 @@ set(MO3D_SOURCES
     src/core/Application.cpp
     src/core/Window.cpp
     src/core/Time.cpp
+    src/core/Settings.cpp
+    src/core/ProjectManager.cpp
     src/midi/MidiInput.cpp
     src/midi/MidiMapping.cpp
     src/midi/MidiEvent.cpp
@@ -51,6 +53,8 @@ set(MO3D_HEADERS
     src/core/Application.h
     src/core/Window.h
     src/core/Time.h
+    src/core/Settings.h
+    src/core/ProjectManager.h
     src/midi/MidiInput.h
     src/midi/MidiMapping.h
     src/midi/MidiEvent.h

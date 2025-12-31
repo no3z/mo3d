@@ -36,6 +36,8 @@ public:
     void SetTitle(const std::string& title);
     void SetVSync(bool enabled);
     void SetFullscreen(bool enabled);
+    void ToggleFullscreen();
+    bool IsFullscreen() const { return isFullscreen; }
 
     using ResizeCallback = std::function<void(int, int)>;
     using KeyCallback = std::function<void(int, int, int, int)>;
@@ -54,6 +56,11 @@ private:
     int width;
     int height;
     std::string title;
+    bool isFullscreen;
+
+    // Store windowed mode position/size for fullscreen toggle
+    int windowedX, windowedY;
+    int windowedWidth, windowedHeight;
 
     ResizeCallback resizeCallback;
     KeyCallback keyCallback;
