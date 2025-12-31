@@ -1,0 +1,20 @@
+{
+  "name": "mo3d",
+  "version": "1.0.0",
+  "description": "Advanced MIDI-driven 3D visualization platform",
+  "dependencies": [
+    "glfw3",
+    "glm",
+    "imgui",
+    {
+      "name": "imgui",
+      "features": ["glfw-binding", "vulkan-binding"]
+    },
+    "nlohmann-json",
+    "freetype",
+    "rtmidi",
+    "vulkan",
+    "stb"
+  ],
+  "builtin-baseline": "latest"
+}
