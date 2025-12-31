@@ -7,6 +7,7 @@
 #include "../midi/MidiMapping.h"
 #include "../scene/Scene.h"
 #include "../utils/Logger.h"
+#include "../utils/FileIO.h"
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
@@ -180,8 +181,40 @@ void UIManager::RenderMappingEditor(MidiMapping* mapping, bool* show) {
     }
 
     ImGui::SameLine();
+    if (ImGui::Button("Import...")) {
+        mappingImportDialog.SetFileExtension(".json");
+        mappingImportDialog.Open(FileDialogMode::Open, "Import MIDI Mappings", ".");
+    }
+
+    ImGui::SameLine();
+    if (ImGui::Button("Export...")) {
+        mappingExportDialog.SetFileExtension(".json");
+        mappingExportDialog.Open(FileDialogMode::Save, "Export MIDI Mappings", ".");
+    }
+
+    ImGui::SameLine();
     if (ImGui::Button("Clear All")) {
         mapping->ClearMappings();
+    }
+
+    // Handle import dialog
+    if (mappingImportDialog.Render()) {
+        std::string path = mappingImportDialog.GetSelectedPath();
+        if (mapping->LoadFromFile(path)) {
+            LOG_INFO("MIDI mappings imported from: ", path);
+        } else {
+            LOG_ERROR("Failed to import MIDI mappings");
+        }
+    }
+
+    // Handle export dialog
+    if (mappingExportDialog.Render()) {
+        std::string path = mappingExportDialog.GetSelectedPath();
+        if (mapping->SaveToFile(path)) {
+            LOG_INFO("MIDI mappings exported to: ", path);
+        } else {
+            LOG_ERROR("Failed to export MIDI mappings");
+        }
     }
 
     ImGui::Separator();
@@ -305,18 +338,63 @@ void UIManager::RenderProjectPanel(ProjectManager* projectManager, Scene* scene,
     ImGui::SameLine();
     if (ImGui::Button("Save Project")) {
         if (!projectManager->GetCurrentProjectPath().empty()) {
+            // Save to existing path
             auto json = projectManager->SerializeProject(scene, mapping);
-            // TODO: Actually save the JSON to file
-            projectManager->MarkSaved();
+            std::string content = json.dump(2);
+            if (FileIO::WriteTextFile(projectManager->GetCurrentProjectPath(), content)) {
+                projectManager->MarkSaved();
+                LOG_INFO("Project saved");
+            }
         } else {
-            // Show save dialog
-            strcpy(savePathBuffer.data(), "project.mo3d");
+            // Show save dialog for new project
+            projectSaveDialog.SetFileExtension(".mo3d");
+            projectSaveDialog.Open(FileDialogMode::Save, "Save Project", ".");
         }
     }
 
     ImGui::SameLine();
-    if (ImGui::Button("Load Project")) {
-        // TODO: Show file browser
+    if (ImGui::Button("Save As...")) {
+        projectSaveDialog.SetFileExtension(".mo3d");
+        projectSaveDialog.Open(FileDialogMode::Save, "Save Project As", ".");
+    }
+
+    ImGui::SameLine();
+    if (ImGui::Button("Open...")) {
+        projectOpenDialog.SetFileExtension(".mo3d");
+        projectOpenDialog.Open(FileDialogMode::Open, "Open Project", ".");
+    }
+
+    // Handle project save dialog
+    if (projectSaveDialog.Render()) {
+        std::string path = projectSaveDialog.GetSelectedPath();
+        auto json = projectManager->SerializeProject(scene, mapping);
+        std::string content = json.dump(2);
+
+        if (FileIO::WriteTextFile(path, content)) {
+            projectManager->SaveProject(path);
+            LOG_INFO("Project saved to: ", path);
+        } else {
+            LOG_ERROR("Failed to save project");
+        }
+    }
+
+    // Handle project open dialog
+    if (projectOpenDialog.Render()) {
+        std::string path = projectOpenDialog.GetSelectedPath();
+        std::string content = FileIO::ReadTextFile(path);
+
+        if (!content.empty()) {
+            try {
+                nlohmann::json json = nlohmann::json::parse(content);
+
+                if (projectManager->LoadProject(path)) {
+                    projectManager->DeserializeProject(json, scene, mapping);
+                    LOG_INFO("Project loaded from: ", path);
+                }
+            } catch (const std::exception& e) {
+                LOG_ERROR("Failed to load project: ", e.what());
+            }
+        }
     }
 
     ImGui::Separator();

@@ -45,6 +45,7 @@ set(MO3D_SOURCES
     src/render/FontRenderer.cpp
     src/ui/UIManager.cpp
     src/ui/MappingEditor.cpp
+    src/ui/FileDialog.cpp
     src/utils/Logger.cpp
     src/utils/FileIO.cpp
 )
@@ -70,6 +71,7 @@ set(MO3D_HEADERS
     src/render/FontRenderer.h
     src/ui/UIManager.h
     src/ui/MappingEditor.h
+    src/ui/FileDialog.h
     src/utils/Logger.h
     src/utils/FileIO.h
 )

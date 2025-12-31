@@ -1,5 +1,6 @@
 #pragma once
 
+#include "FileDialog.h"
 #include <memory>
 
 struct GLFWwindow;
@@ -35,7 +36,13 @@ public:
 private:
     bool showDemoWindow;
 
-    // For file dialogs
+    // File dialogs
+    FileDialog projectOpenDialog;
+    FileDialog projectSaveDialog;
+    FileDialog mappingImportDialog;
+    FileDialog mappingExportDialog;
+
+    // For input buffers
     std::string projectNameBuffer;
     std::string projectAuthorBuffer;
     std::string projectDescBuffer;
